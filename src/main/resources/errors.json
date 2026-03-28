@@ -1,0 +1,20 @@
+[
+  {
+    "keyword": "sqlsyntaxerrorexception",
+    "rootCause": "Database schema mismatch",
+    "explanation": "Column not found in database",
+    "solution": "Check schema and add missing column"
+  },
+  {
+    "keyword": "nullpointerexception",
+    "rootCause": "Null object access",
+    "explanation": "Object is not initialized",
+    "solution": "Check for null before usage"
+  },
+  {
+    "keyword": "jwt signature",
+    "rootCause": "JWT configuration issue",
+    "explanation": "Token signature mismatch",
+    "solution": "Verify secret key configuration"
+  }
+]
