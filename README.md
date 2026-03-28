@@ -194,6 +194,8 @@ This project demonstrates:
 > Phase 1 Complete — Moving toward full AI-powered RAG system.
 
 ---
+Here is the HLD diagram for this project
+![image](https://github.com/Sukesh-blip/AI-Log-Debugger/blob/32c739322d74faff0905866879049c9679d7a796/AI-LogDebugger%20HLD.png)
 
 ## 👨‍💻 Author
 
