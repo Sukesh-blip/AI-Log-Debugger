@@ -5,20 +5,30 @@ import com.example.demo.model.ErrorKnowledge;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.example.demo.util.HashUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class LogAnalysisService {
 
     @Autowired
     private EmbeddingService embeddingService;
 
-    public AnalysisResponse analyzeLog(String log) {
+    @Autowired
+    private CacheService cacheService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public AnalysisResponse analyzeLog(String logMessage) {
 
         AnalysisResponse response = new AnalysisResponse();
 
-        if (log == null || log.isEmpty()) {
+        if (logMessage == null || logMessage.isEmpty()) {
             response.setRootCause("Invalid input");
             response.setExplanation("Log is empty");
             response.setSuggestedFix("Provide valid log");
@@ -26,7 +36,22 @@ public class LogAnalysisService {
             return response;
         }
 
-        Map<String, Integer> logVector = embeddingService.generateEmbedding(log);
+        String key = HashUtil.sha256(logMessage);
+        String cached = cacheService.get(key);
+
+        if (cached != null) {
+            log.info("Cache HIT");
+            System.out.println("🔥 Cache HIT");
+            try {
+                return objectMapper.readValue(cached, AnalysisResponse.class);
+            } catch (Exception e) {
+                log.error("Error parsing cached response", e);
+            }
+        } else {
+            log.info("Cache MISS");
+        }
+
+        Map<String, Integer> logVector = embeddingService.generateEmbedding(logMessage);
 
         List<ErrorKnowledge> knowledgeList = KnowledgeBase.getKnowledge();
 
@@ -56,6 +81,12 @@ public class LogAnalysisService {
             response.setExplanation("No match found");
             response.setSuggestedFix("Check manually");
             response.setConfidence(0.5);
+        }
+
+        try {
+            cacheService.set(key, objectMapper.writeValueAsString(response), 21600); // 6 hours
+        } catch (Exception e) {
+            log.error("Error writing cache", e);
         }
 
         return response;
