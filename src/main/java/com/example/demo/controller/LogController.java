@@ -10,11 +10,18 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/logs")
 public class LogController {
 
+
+
     @Autowired
     private LogAnalysisService logAnalysisService;
 
     @PostMapping("/analyze")
     public AnalysisResponse analyze(@RequestBody LogRequest request) {
         return logAnalysisService.analyzeLog(request.getLog());
+    }
+
+    @GetMapping("/test-ai")
+    public AnalysisResponse testAI() {
+        return logAnalysisService.analyzeLog("DB connection refused error");
     }
 }

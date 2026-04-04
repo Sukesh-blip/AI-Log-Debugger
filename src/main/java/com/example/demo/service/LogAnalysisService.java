@@ -1,116 +1,87 @@
 package com.example.demo.service;
 
-import com.example.demo.dto.AnalysisResponse;
-import com.example.demo.model.ErrorKnowledge;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.example.demo.dto.AnalysisResponse;
 import com.example.demo.util.HashUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-
-@Slf4j
 @Service
 public class LogAnalysisService {
 
-    @Autowired
-    private EmbeddingService embeddingService;
+    private static final Logger log = LoggerFactory.getLogger(LogAnalysisService.class);
+
 
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private RuleEngineService ruleEngineService;
+
+    @Autowired
+    private LLMService llmService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+
+
     public AnalysisResponse analyzeLog(String logMessage) {
-
-        AnalysisResponse response = new AnalysisResponse();
-
         if (logMessage == null || logMessage.isEmpty()) {
-            response.setRootCause("Invalid input");
-            response.setExplanation("Log is empty");
-            response.setSuggestedFix("Provide valid log");
-            response.setConfidence(0.0);
-            return response;
+            return new AnalysisResponse("Invalid input", "Log is empty", "Provide valid log", 0.0);
         }
 
-        String key = HashUtil.sha256(logMessage);
-        String cached = cacheService.get(key);
+        // 1. Normalize
+        String normalized = logMessage.trim().toLowerCase();
 
+        String key = HashUtil.sha256(normalized);
+
+        // 1️⃣ Cache
+        String cached = cacheService.get(key);
         if (cached != null) {
             log.info("Cache HIT");
-            System.out.println("🔥 Cache HIT");
-            try {
-                return objectMapper.readValue(cached, AnalysisResponse.class);
-            } catch (Exception e) {
-                log.error("Error parsing cached response", e);
-            }
-        } else {
-            log.info("Cache MISS");
+            try { return objectMapper.readValue(cached, AnalysisResponse.class); } catch(Exception e) {}
         }
 
-        Map<String, Integer> logVector = embeddingService.generateEmbedding(logMessage);
-
-        List<ErrorKnowledge> knowledgeList = KnowledgeBase.getKnowledge();
-
-        ErrorKnowledge bestMatch = null;
-        double bestScore = 0;
-
-        for (ErrorKnowledge knowledge : knowledgeList) {
-
-            Map<String, Integer> knowledgeVector =
-                    embeddingService.generateEmbedding(knowledge.getKeyword());
-
-            double score = cosineSimilarity(logVector, knowledgeVector);
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMatch = knowledge;
-            }
+        // 2️⃣ Rule Engine
+        String ruleResult = ruleEngineService.checkRules(normalized);
+        if (ruleResult != null) {
+            log.info("Rule Engine HIT");
+            // Store Rule Engine result in cache too to optimize future identical requests
+            try { cacheService.set(key, ruleResult, 21600); } catch(Exception e) {}
+            try { return objectMapper.readValue(ruleResult, AnalysisResponse.class); } catch(Exception e) {}
         }
 
-        if (bestMatch != null && bestScore > 0) {
-            response.setRootCause(bestMatch.getRootCause());
-            response.setExplanation(bestMatch.getExplanation());
-            response.setSuggestedFix(bestMatch.getSolution());
-            response.setConfidence(bestScore);
-        } else {
-            response.setRootCause("Unknown error");
-            response.setExplanation("No match found");
-            response.setSuggestedFix("Check manually");
-            response.setConfidence(0.5);
+        // 3️⃣ LLM (Groq)
+        log.info("Calling Groq LLM...");
+        String aiResponse = llmService.call(logMessage);
+
+        // Clean up markdown syntax from LLM output if any
+        if (aiResponse.startsWith("```json")) {
+            aiResponse = aiResponse.substring(7);
+        }
+        if (aiResponse.startsWith("```")) {
+            aiResponse = aiResponse.substring(3);
+        }
+        if (aiResponse.endsWith("```")) {
+            aiResponse = aiResponse.substring(0, aiResponse.length() - 3);
         }
 
+        // 4️⃣ Store in cache
         try {
-            cacheService.set(key, objectMapper.writeValueAsString(response), 21600); // 6 hours
+            cacheService.set(key, aiResponse, 21600);
         } catch (Exception e) {
             log.error("Error writing cache", e);
         }
 
-        return response;
-    }
-
-    private double cosineSimilarity(Map<String, Integer> v1, Map<String, Integer> v2) {
-
-        double dotProduct = 0.0;
-        double norm1 = 0.0;
-        double norm2 = 0.0;
-
-        for (String key : v1.keySet()) {
-            if (v2.containsKey(key)) {
-                dotProduct += v1.get(key) * v2.get(key);
-            }
-            norm1 += Math.pow(v1.get(key), 2);
+        // 5️⃣ Return
+        try {
+            return objectMapper.readValue(aiResponse, AnalysisResponse.class);
+        } catch (Exception e) {
+            log.error("Error parsing final LLM logic into API obj", e);
+            return new AnalysisResponse("Parsing Error", "LLM format error", "Retry request", 0.0);
         }
-
-        for (int value : v2.values()) {
-            norm2 += Math.pow(value, 2);
-        }
-
-        if (norm1 == 0 || norm2 == 0) return 0;
-
-        return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
     }
 }
