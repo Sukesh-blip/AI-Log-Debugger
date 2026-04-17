@@ -1,21 +1,21 @@
 package com.example.demo.service;
 
 import org.springframework.stereotype.Service;
-
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class EmbeddingService {
 
-    public Map<String, Integer> generateEmbedding(String text) {
-
-        Map<String, Integer> vector = new HashMap<>();
-
-        String[] words = text.toLowerCase().split(" ");
-
-        for (String word : words) {
-            vector.put(word, vector.getOrDefault(word, 0) + 1);
+    public List<Float> generateEmbedding(String log) {
+        // TEMP: mock embedding (we replace later with real model)
+        
+        List<Float> vector = new ArrayList<>();
+        
+        int hash = log.hashCode();
+        
+        for (int i = 0; i < 10; i++) {
+            vector.add((float) ((hash + i) % 100) / 100);
         }
 
         return vector;

@@ -5,15 +5,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.example.demo.dto.AnalysisResponse;
 import com.example.demo.util.HashUtil;
+import com.example.demo.dto.VectorEntry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class LogAnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(LogAnalysisService.class);
-
 
     @Autowired
     private CacheService cacheService;
@@ -24,9 +27,16 @@ public class LogAnalysisService {
     @Autowired
     private LLMService llmService;
 
+    @Autowired
+    private EmbeddingService embeddingService;
+
+    @Autowired
+    private VectorSearchService vectorSearchService;
+
+    @Autowired
+    private VectorStore vectorStore;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-
 
     public AnalysisResponse analyzeLog(String logMessage) {
         if (logMessage == null || logMessage.isEmpty()) {
@@ -54,9 +64,24 @@ public class LogAnalysisService {
             try { return objectMapper.readValue(ruleResult, AnalysisResponse.class); } catch(Exception e) {}
         }
 
-        // 3️⃣ LLM (Groq)
+        // 3️⃣ Embedding Generation (RAG Step 1)
+        List<Float> embedding = embeddingService.generateEmbedding(logMessage);
+
+        // 4️⃣ Vector Search (RAG Step 2)
+        List<VectorEntry> similarLogs = vectorSearchService.search(embedding);
+
+        // 5️⃣ Context Builder (RAG Step 3)
+        String context = similarLogs.stream()
+                .map(VectorEntry::getLog)
+                .collect(Collectors.joining("\n"));
+
+        // 6️⃣ LLM (Groq) with Context
         log.info("Calling Groq LLM...");
-        String aiResponse = llmService.call(logMessage);
+        String prompt = "Log:\n" + logMessage +
+                "\n\nSimilar Issues:\n" + context +
+                "\n\nFind root cause and fix. Return strictly in standard JSON format expected.";
+                
+        String aiResponse = llmService.call(prompt);
 
         // Clean up markdown syntax from LLM output if any
         if (aiResponse.startsWith("```json")) {
@@ -69,14 +94,17 @@ public class LogAnalysisService {
             aiResponse = aiResponse.substring(0, aiResponse.length() - 3);
         }
 
-        // 4️⃣ Store in cache
+        // 7️⃣ Store into Vector DB
+        vectorStore.save(logMessage, embedding);
+
+        // 8️⃣ Store in cache
         try {
             cacheService.set(key, aiResponse, 21600);
         } catch (Exception e) {
             log.error("Error writing cache", e);
         }
 
-        // 5️⃣ Return
+        // 9️⃣ Return
         try {
             return objectMapper.readValue(aiResponse, AnalysisResponse.class);
         } catch (Exception e) {
