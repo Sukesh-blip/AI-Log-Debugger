@@ -19,8 +19,15 @@ public class LogController {
 
     @PostMapping("/analyze")
     @Operation(summary = "Analyze a log message",
-               description = "Returns root cause, explanation, fix, and confidence score.")
+               description = "Accepts any log — single line, full stack trace, or raw console output. Returns root cause, explanation, fix, and confidence score.")
     public ResponseEntity<AnalysisResponse> analyze(@RequestBody LogRequest request) {
+        if (request == null || request.getLog() == null || request.getLog().isBlank()) {
+            return ResponseEntity.badRequest().body(
+                    new AnalysisResponse("Invalid Input",
+                            "Request body or log field is missing.",
+                            "Send a JSON body with a 'log' field containing the error text.", 0.0)
+            );
+        }
         AnalysisResponse response = logAnalysisService.analyzeLog(request.getLog());
         return ResponseEntity.ok(response);
     }

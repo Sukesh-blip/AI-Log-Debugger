@@ -33,12 +33,22 @@ public class LogAnalysisService {
             return new AnalysisResponse("Invalid Input", "Log message is empty.",
                     "Provide a non-empty log string.", 0.0);
         }
-        if (logMessage.length() > 5000) {
-            return new AnalysisResponse("Invalid Input", "Log exceeds 5000 character limit.",
-                    "Trim to the relevant error section.", 0.0);
+
+        // Step 1b: Sanitize — handle raw stack traces, console dumps, special chars
+        logMessage = logMessage
+                .replaceAll("[\\p{Cntrl}&&[^\n\r\t]]", "") // remove control chars except newline/tab
+                .replaceAll("\t", " ")                      // tabs to spaces
+                .replaceAll("\r\n", "\n")                   // normalize line endings
+                .replaceAll("\r", "\n")                     // normalize carriage returns
+                .trim();
+
+        // Step 1c: Truncate long inputs — keep first 3000 chars (most relevant error info)
+        if (logMessage.length() > 3000) {
+            logMessage = logMessage.substring(0, 3000);
+            log.info("Log truncated to 3000 chars for processing.");
         }
 
-        // Step 2: Normalize
+        // Step 2: Normalize for cache key
         String normalized = logMessage.trim().toLowerCase();
         String cacheKey   = HashUtil.sha256(normalized);
 
@@ -65,29 +75,14 @@ public class LogAnalysisService {
             log.warn("Rule engine failed (non-fatal): {}", e.getMessage());
         }
 
-     // Step 5: Embedding
+        // Step 5: Embedding
         log.info("Generating embedding...");
         List<Float> embedding;
         try {
             embedding = embeddingService.generateEmbedding(logMessage);
         } catch (Exception e) {
-            log.error("Embedding generation failed — going direct to LLM without vector context: {}", e.getMessage());
-            // Skip vector search, go straight to LLM with no context
-            String prompt = """
-                    Analyze this application log:
-
-                    Log:
-                    %s
-
-                    Return ONLY a valid JSON object:
-                    {
-                      "rootCause": "...",
-                      "explanation": "...",
-                      "suggestedFix": "...",
-                      "confidence": 0.0
-                    }
-                    """.formatted(logMessage);
-            String aiResponse = cleanMarkdown(llmService.call(prompt));
+            log.error("Embedding failed — going direct to LLM: {}", e.getMessage());
+            String aiResponse = cleanMarkdown(llmService.call(buildPrompt(logMessage, "(no similar logs found)")));
             saveToCache(cacheKey, aiResponse);
             try {
                 return objectMapper.readValue(aiResponse, AnalysisResponse.class);
@@ -95,6 +90,7 @@ public class LogAnalysisService {
                 return new AnalysisResponse("Parse Error", "LLM returned unexpected format.", "Retry the request.", 0.0);
             }
         }
+
         // Step 6: Vector search
         log.info("Searching vector store...");
         List<VectorEntry> similarLogs = vectorSearchService.search(embedding);
@@ -106,25 +102,7 @@ public class LogAnalysisService {
 
         // Step 8: LLM
         log.info(">>> Calling Azure OpenAI LLM...");
-        String prompt = """
-                Analyze this application log:
-
-                Log:
-                %s
-
-                Similar issues from knowledge base:
-                %s
-
-                Return ONLY a valid JSON object:
-                {
-                  "rootCause": "...",
-                  "explanation": "...",
-                  "suggestedFix": "...",
-                  "confidence": 0.0
-                }
-                """.formatted(logMessage, context);
-
-        String aiResponse = cleanMarkdown(llmService.call(prompt));
+        String aiResponse = cleanMarkdown(llmService.call(buildPrompt(logMessage, context)));
 
         // Step 9: Save + cache + return
         vectorStore.save(logMessage, embedding);
@@ -137,6 +115,29 @@ public class LogAnalysisService {
             return new AnalysisResponse("Parse Error",
                     "LLM returned unexpected format.", "Retry the request.", 0.0);
         }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private String buildPrompt(String logMessage, String context) {
+        return """
+                You are an expert backend debugging assistant.
+                Analyze this application log and identify the root cause.
+
+                Log:
+                %s
+
+                Similar issues from knowledge base:
+                %s
+
+                Return ONLY a valid JSON object with these exact fields:
+                {
+                  "rootCause": "...",
+                  "explanation": "...",
+                  "suggestedFix": "...",
+                  "confidence": 0.0
+                }
+                """.formatted(logMessage, context);
     }
 
     private String cleanMarkdown(String raw) {
