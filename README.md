@@ -1,337 +1,347 @@
-# AI Log Debugger (Phase 2 – Hybrid AI Pipeline)
+# AI Log Debugger — Phase 3 (Azure AI Stack)
 
-AI Log Debugger is a backend system designed to analyze application logs and identify the root cause of errors, along with explanations and suggested fixes. The system follows a cost-optimized hybrid AI architecture that combines rule-based logic, similarity-based retrieval, and LLM fallback to ensure accuracy, performance, and efficiency.
+> A production-grade backend system that automatically analyzes application logs and returns root cause, explanation, suggested fix, and confidence score — powered entirely by Azure AI services.
 
-## Project Overview
+---
 
-Debugging production logs is often repetitive and time-consuming. This system automates that process by analyzing logs, identifying patterns, retrieving similar issues, and generating structured responses. Instead of relying entirely on LLMs, the system uses a layered approach to minimize unnecessary AI usage while maintaining high-quality outputs.
+## Live Demo
 
-Given a log input, the system returns:
-- Root cause  
-- Explanation  
-- Suggested fix  
-- Confidence score  
+**API Endpoint:** `https://ai-log-debugger-app.azurewebsites.net/logs/analyze`
 
-The goal is to build a system that can understand variations in logs and map them to relevant issues using retrieval and controlled AI reasoning.
+**Swagger UI:** `https://ai-log-debugger-app.azurewebsites.net/swagger-ui.html`
 
-## Current Architecture (Hybrid AI Pipeline)
+---
 
-Raw Log → Log Normalization → Redis Cache → Rule Engine → Embedding Generation → Vector Search (Top-K) → Context Builder → LLM (Fallback) → Structured JSON Response
+## What It Does
 
-## Key Features
+Debugging production logs is repetitive and time-consuming. This system automates it.
 
-The system uses a hybrid AI pipeline where multiple layers handle different responsibilities. The rule engine handles common deterministic errors, the cache avoids repeated computation, vector search retrieves similar issues, and the LLM is used only when necessary. This reduces cost while improving response accuracy.
+Send any log — a single error line, a full stack trace, or raw console output — and the system returns:
 
-Similarity-based retrieval forms the foundation of the RAG approach. Logs are converted into vector representations and cosine similarity is used to find related issues. The system retrieves top-K similar logs and uses them to build context for further reasoning.
+- **Root Cause** — what went wrong
+- **Explanation** — why it happened
+- **Suggested Fix** — how to resolve it
+- **Confidence Score** — how certain the system is (0.0 to 1.0)
 
-A critical improvement introduced in this phase is similarity threshold filtering. During testing, unrelated logs such as CORS errors were incorrectly matching database errors. This was resolved by applying a similarity threshold so that only high-confidence matches are considered. If no relevant match is found, the system falls back to the LLM.
+### Example
 
-The vector store is currently implemented in-memory and stores logs along with their embeddings. This allows fast similarity search and is designed to be replaced later with a production-grade vector database such as Azure AI Search or FAISS.
-
-The system produces structured JSON responses containing root cause, explanation, suggested fix, and a confidence score.
-
-## Example
-
-Input:
+**Request:**
+```json
+POST /logs/analyze
 {
-  "log": "ERROR: connection refused while connecting to database"
+  "log": "ERROR: connection refused while connecting to database at localhost:5432"
 }
+```
 
-Output:
+**Response:**
+```json
 {
-  "rootCause": "Database connection failure",
-  "explanation": "The application is unable to connect to the database service",
-  "suggestedFix": "Check DB service availability and connection configuration",
-  "confidence": 0.89
+  "rootCause": "Database connection failed",
+  "explanation": "Connection refused — the target service is not running or unreachable.",
+  "suggestedFix": "Check DB service status, host, and port configuration.",
+  "confidence": 1.0
 }
+```
 
-## Engineering Learnings
+---
 
-One key realization during development was that the top similarity result is not always correct. Without filtering, the system may return irrelevant matches. Introducing a similarity threshold significantly improved accuracy by eliminating low-confidence results.
+## Architecture — 9-Step Hybrid RAG Pipeline
 
-Another important learning was that embedding quality directly impacts system performance. Mock embeddings led to incorrect matches, highlighting the need for real embedding models.
+```
+Log Input
+    ↓
+1. Input Validation + Sanitization
+    ↓
+2. Normalize (trim + lowercase)
+    ↓
+3. Redis Cache Check          → HIT: return instantly, zero AI cost
+    ↓
+4. Rule Engine                → HIT: keyword/semantic match, no LLM needed
+    ↓
+5. Azure OpenAI Embeddings    → convert log to 1536-dim vector (ada-002)
+    ↓
+6. Azure AI Search (HNSW)     → find top-3 similar past logs
+    ↓
+7. Context Builder            → join similar logs into prompt context
+    ↓
+8. Azure OpenAI GPT-4o-mini   → only called when all above layers miss
+    ↓
+9. Save to Vector Store + Cache → Return JSON
+```
 
-The system also demonstrates that retrieval alone is not sufficient. It must be controlled. Proper filtering, routing, and fallback mechanisms are required to ensure correct outputs.
+This is a **cost-optimized Hybrid RAG Pipeline**. The LLM is the last resort — most requests are resolved through cache, rules, or vector retrieval without ever calling the LLM.
 
-A core design principle followed is that LLM should be used as a last resort. Most requests should be handled through rules, cache, or retrieval to optimize cost and latency.
+---
+
+## Swagger UI
+
+![Swagger UI](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/swagger-ui.png)
+
+---
+
+## API Responses
+
+### Rule Engine Response (confidence: 1.0 — instant, no LLM cost)
+
+![Rule Engine Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-rule-engine.png)
+
+### LLM Response — GPT-4o-mini (unknown error pattern)
+
+![LLM Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-llm.png)
+
+### Stack Trace Input (multi-line raw input supported)
+
+![Stack Trace Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-stacktrace.png)
+
+---
+
+## Azure Infrastructure
+
+### Azure OpenAI — GPT-4o-mini + text-embedding-ada-002
+
+![Azure OpenAI](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-openai.png)
+
+### Model Deployments — Both Succeeded
+
+![Model Deployments](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-deployments.png)
+
+### Azure AI Search — Vector Store (HNSW, 1536 dims)
+
+![Azure AI Search](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-search.png)
+
+### Azure Cache for Redis — Running
+
+![Azure Redis](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-redis.png)
+
+### Azure App Service — Status: Running
+
+![Azure App Service](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-appservice.png)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Spring Boot 3.3.2, Java 17 |
+| LLM | Azure OpenAI GPT-4o-mini |
+| Embeddings | Azure OpenAI text-embedding-ada-002 (1536 dims) |
+| Vector Store | Azure AI Search (HNSW algorithm) |
+| Cache | Azure Cache for Redis (SSL, port 6380, 6hr TTL) |
+| API Docs | Swagger UI (springdoc) |
+| Deployment | Azure App Service (Linux, Java 17 SE) |
+| Build | Maven |
+
+---
 
 ## Cost Optimization Strategy
 
-The system minimizes LLM usage through multiple layers. The cache avoids repeated processing, the rule engine handles predictable errors, vector search reduces dependency on LLM by retrieving known patterns, and similarity thresholds prevent unnecessary calls. The LLM is invoked only when no reliable match is found.
+The pipeline short-circuits as early as possible to minimize Azure OpenAI token usage:
 
-## Project Structure
+| Layer | Cost | When triggered |
+|---|---|---|
+| Redis Cache | Zero | Same log seen before |
+| Rule Engine (keyword) | Zero | Known error patterns |
+| Rule Engine (semantic) | Embedding only | Similar to known patterns |
+| Vector Search | Embedding only | Similar past logs exist |
+| LLM (GPT-4o-mini) | Full cost | Unknown error, no matches |
 
-com.maveric.ailogger
-
-controller → REST API endpoints  
-service → Business logic including embedding, similarity, vector search, and analysis  
-model → Data models  
-dto → Request and response objects  
-cache → Redis caching layer  
-rules → Rule engine implementation  
-vector → Vector store and search logic  
-resources → Knowledge base (JSON)
-
-## Tech Stack
-
-Java  
-Spring Boot  
-Redis  
-Groq LLM (openai/gpt-oss-120b)  
-Cosine Similarity  
-Vector-based Retrieval  
-REST APIs  
-
-## How to Run
-
-Clone the repository and run the Spring Boot application. Send a POST request to:
-
-http://localhost:8080/logs/analyze
-
-Request body:
-{
-  "log": "your log here"
-}
-
-## Current Status
-
-The backend API is complete. Redis caching is implemented and working. The rule engine handles common error patterns. A basic RAG pipeline with embedding and vector search has been implemented. Similarity threshold filtering has been added to improve accuracy and prevent incorrect matches.
-
-## Next Steps
-
-The next phase will focus on replacing mock embeddings with real embedding models, integrating a vector database such as Azure AI Search, improving similarity-based routing, enhancing context building, adding observability, and deploying the system on cloud infrastructure.
-
-## Why This Project Stands Out
-
-Most beginner projects focus on CRUD operations or static logic. This project demonstrates backend system design, AI integration, cost-aware architecture, and retrieval-based reasoning. It reflects how real-world AI-backed systems are designed and optimized.
-
-## Author
-
-Maveric (Sukesh Biradar)  
-Backend | Cloud | AI (building real systems)
-
-## Final Note
-
-This project is not just an AI feature implementation. It is a controlled AI system designed to balance accuracy, cost, and performance through structured engineering decisions.
-
-
------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-# AI Log Debugger (Phase 1)
-
-A backend system designed to analyze application logs and identify the root cause of errors, along with explanations and suggested fixes.
-
----
-
-## Project Overview
-
-Debugging logs is often time-consuming and repetitive. This project aims to simplify that process by automatically analyzing logs and providing structured insights.
-
-Given a log input, the system returns:
-
-* Root cause
-* Explanation
-* Suggested fix
-* Confidence score
-
-The goal is not just to match errors, but to build a system that can **understand variations in logs** and map them to relevant issues.
-
----
-
-## Current Status
-
-Phase 1 focuses on building a strong backend and retrieval foundation before integrating AI.
-
-So far, the system includes:
-
-* A Spring Boot REST API for log analysis
-* Log ingestion and basic normalization
-* A JSON-based knowledge base of error patterns
-* A similarity-based matching engine
-* Cosine similarity for comparing logs
-* A simple embedding simulation (word frequency based)
-
-This allows the system to move beyond exact keyword matching and handle variations in log inputs.
-
----
-
-## Architecture (Current Implementation)
-
-The current flow of the system is:
-
-Client
-→ Spring Boot API (`/logs/analyze`)
-→ Log Ingestion
-→ Log Analysis Service
-→ Embedding Simulation
-→ Similarity Engine (Cosine Similarity)
-→ Knowledge Base (JSON)
-→ Response Formatter
-
-A complete high-level architecture diagram (RAG-based design) is included below.
-
----
-
-## Key Features
-
-### 1. Log Analysis
-
-The system identifies common categories of errors such as:
-
-* SQL-related issues
-* Null pointer exceptions
-* JWT-related errors
-
----
-
-### 2. Data-Driven Knowledge Base
-
-Error patterns are stored externally in a JSON file.
-This makes the system easy to extend without modifying code.
-
----
-
-### 3. Similarity-Based Matching
-
-Instead of relying on exact matches:
-
-* Logs are converted into vector-like representations
-* Cosine similarity is used to find the closest match
-* Different variations of similar errors can still be identified
-
----
-
-### 4. Embedding Simulation
-
-A simple embedding approach based on word frequency is used to simulate vector representations.
-
-This is designed to prepare the system for:
-
-* Real embeddings (OpenAI / Azure)
-* Vector database integration
-
----
-
-## Example
-
-### Input
-
-```json
-{
-  "log": "database column missing error"
-}
-```
-
-### Output
-
-```json
-{
-  "rootCause": "Database schema mismatch",
-  "explanation": "Column not found in database",
-  "suggestedFix": "Check schema and add missing column",
-  "confidence": 0.87
-}
-```
+In production, the vast majority of repeated logs are served from cache with zero AI cost.
 
 ---
 
 ## Project Structure
 
 ```
-com.maveric.ailogger
+src/main/java/com/example/demo/
 │
-├── controller       -> API endpoints
-├── service          -> Business logic
-├── model            -> Data models
-├── dto              -> Request/Response objects
-├── resources        -> errors.json (knowledge base)
+├── config/
+│   ├── AzureConfig.java              # OpenAI + Search + Redis beans
+│   ├── RedisConfig.java              # Redis SSL template
+│   └── SearchIndexInitializer.java   # Auto-creates vector index on startup
+│
+├── controller/
+│   └── LogController.java            # REST endpoints + Swagger
+│
+├── service/
+│   ├── LogAnalysisService.java       # Orchestrates the 9-step pipeline
+│   ├── EmbeddingService.java         # Azure OpenAI ada-002 embeddings
+│   ├── LLMService.java               # Azure OpenAI GPT-4o-mini
+│   ├── VectorStore.java              # Azure AI Search save + search
+│   ├── VectorSearchService.java      # Vector similarity search
+│   ├── RuleEngineService.java        # Keyword + semantic rules
+│   ├── CacheService.java             # Redis get/set with TTL
+│   ├── SimilarityService.java        # Cosine similarity
+│   └── KnowledgeBase.java            # Loads errors.json
+│
+├── model/
+│   ├── LogSearchDocument.java        # Azure Search document schema
+│   └── ErrorKnowledge.java           # Knowledge base entry
+│
+├── dto/
+│   ├── LogRequest.java               # API request
+│   ├── AnalysisResponse.java         # API response
+│   └── VectorEntry.java              # Vector store entry
+│
+├── exception/
+│   └── GlobalExceptionHandler.java   # Clean error responses
+│
+└── util/
+    └── HashUtil.java                 # SHA-256 cache key generator
+
+src/main/resources/
+├── application.properties            # Azure config
+├── application-secrets.properties    # Keys (not committed)
+└── errors.json                       # 10 error pattern knowledge base
 ```
 
 ---
 
-## What Makes This Different
+## Running Locally
 
-Most beginner projects focus on CRUD operations or static logic.
+**Prerequisites:** Java 17, Maven, Azure subscription
 
-This project is designed to reflect a more realistic system:
-
-* Data-driven architecture
-* Similarity-based reasoning
-* Clear separation of concerns
-* Structured for future AI integration (RAG pipeline)
-
----
-
-## Next Steps
-
-The next phase will focus on moving toward a complete RAG-based system:
-
-* Implement Top-K retrieval
-* Introduce a vector database (FAISS / ChromaDB)
-* Add prompt construction
-* Integrate an LLM for better explanations
-* Deploy the system using Docker and cloud services
-
----
-
-## Tech Stack
-
-* Java
-* Spring Boot
-* REST APIs
-* JSON (Knowledge Base)
-* Cosine Similarity
-* Basic Vector Modeling
-
----
-
-## How to Run
-
-1. Clone the repository
-2. Run the Spring Boot application
-3. Send a request using Postman or any API client
-
+**1. Clone the repository:**
+```bash
+git clone https://github.com/Sukesh-blip/AI-Log-Debugger.git
+cd AI-Log-Debugger
 ```
+
+**2. Fill in your secrets:**
+
+Create `src/main/resources/application-secrets.properties`:
+```properties
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_KEY=your-key
+
+AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
+AZURE_SEARCH_KEY=your-admin-key
+
+AZURE_REDIS_HOST=your-cache.redis.cache.windows.net
+AZURE_REDIS_PASSWORD=your-redis-key
+```
+
+**3. Run:**
+```bash
+./mvnw spring-boot:run
+```
+
+On first startup you will see:
+```
+Index 'log-vectors' not found — creating...
+Index 'log-vectors' created successfully.
+```
+
+The Azure AI Search index is created automatically — no manual portal setup needed.
+
+**4. Test:**
+```bash
 POST http://localhost:8080/logs/analyze
+Content-Type: application/json
+
+{"log": "ERROR: connection refused while connecting to database at localhost:5432"}
 ```
 
-### Request Body
+**5. Swagger UI:**
+```
+http://localhost:8080/swagger-ui.html
+```
 
+---
+
+## Deploying to Azure App Service
+
+**Build:**
+```bash
+./mvnw clean package -DskipTests
+```
+
+**Deploy:**
+```bash
+az webapp deploy \
+  --name your-app-name \
+  --resource-group your-rg \
+  --src-path target/ai-log-debugger-0.0.1-SNAPSHOT.jar \
+  --type jar
+```
+
+---
+
+## API Reference
+
+### `POST /logs/analyze`
+
+Accepts any log input — single line, full stack trace, or raw console output.
+
+**Request:**
 ```json
 {
-  "log": "your log here"
+  "log": "your error log here"
 }
 ```
 
+**Response:**
+```json
+{
+  "rootCause": "string",
+  "explanation": "string",
+  "suggestedFix": "string",
+  "confidence": 0.0
+}
+```
+
+### `GET /logs/test-ai`
+
+Quick test endpoint — runs analysis on a hardcoded DB connection error.
+
 ---
 
-## Learning Outcome
+## Knowledge Base
 
-This project helped in understanding:
+The rule engine uses a built-in knowledge base of 10 common error patterns covering:
 
-* Backend system design
-* Data-driven architecture
-* Basics of retrieval systems
-* How RAG pipelines are structured
-* Preparing a system for AI integration
+- Database connection failures
+- NullPointerException
+- OutOfMemoryError
+- StackOverflowError
+- JWT signature mismatch
+- 403 / 404 HTTP errors
+- ClassNotFoundException
+- Duplicate key violations
+- Connection timeouts
+- SQL syntax errors
+
+Any log not matching these patterns is handled by the LLM.
 
 ---
 
-## Status
+## What This Project Demonstrates
 
-Phase 1 complete.
-Currently working toward full AI-powered log analysis using a RAG-based approach.
+- **Hybrid RAG Pipeline** — combining deterministic rules with probabilistic AI
+- **Cost-aware AI architecture** — LLM as last resort, not first call
+- **Azure AI integration** — OpenAI, AI Search, Redis, App Service
+- **Production patterns** — caching, fallbacks, input sanitization, structured output
+- **Self-improving system** — every LLM response is stored for future vector retrieval
+
+---
+
+## Project Evolution
+
+| Phase | What was built |
+|---|---|
+| Phase 1 | Spring Boot API, JSON knowledge base, cosine similarity, mock embeddings |
+| Phase 2 | Full RAG pipeline, Redis cache, rule engine, similarity threshold, Groq LLM |
+| Phase 3 | Azure OpenAI (real embeddings + GPT-4o-mini), Azure AI Search (HNSW vector store), Azure Cache for Redis (SSL), Azure App Service deployment |
 
 ---
 
 ## Author
 
-Maveric
-Backend | Cloud | AI (learning and building)
+**Sukesh Biradar**
+Backend | Cloud | AI
 
-Here is the HLD diagram for this project
-![image](https://github.com/Sukesh-blip/AI-Log-Debugger/blob/32c739322d74faff0905866879049c9679d7a796/AI-LogDebugger%20HLD.png)
+GitHub: [Sukesh-blip](https://github.com/Sukesh-blip)
 
-## 👨‍💻 Author
+---
 
-Sukesh Biradar
+> This project is not just an AI feature implementation. It is a controlled AI system designed to balance accuracy, cost, and performance through structured engineering decisions.
