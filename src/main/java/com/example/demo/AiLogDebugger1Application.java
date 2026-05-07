@@ -6,8 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class AiLogDebugger1Application {
 
-	public static void main(String[] args) {
-		SpringApplication.run(AiLogDebugger1Application.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(AiLogDebugger1Application.class, args);
+    }
 }

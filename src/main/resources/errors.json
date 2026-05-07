@@ -2,19 +2,61 @@
   {
     "keyword": "sqlsyntaxerrorexception",
     "rootCause": "Database schema mismatch",
-    "explanation": "Column not found in database",
-    "solution": "Check schema and add missing column"
+    "explanation": "A column or table referenced in the query does not exist in the database schema.",
+    "solution": "Run pending migrations. Verify column names match the current schema."
   },
   {
     "keyword": "nullpointerexception",
     "rootCause": "Null object access",
-    "explanation": "Object is not initialized",
-    "solution": "Check for null before usage"
+    "explanation": "The application attempted to call a method or access a field on an uninitialized object.",
+    "solution": "Add null checks before usage. Use Optional or @NonNull annotations to prevent this."
   },
   {
     "keyword": "jwt signature",
-    "rootCause": "JWT configuration issue",
-    "explanation": "Token signature mismatch",
-    "solution": "Verify secret key configuration"
+    "rootCause": "JWT token signature mismatch",
+    "explanation": "The JWT token was signed with a different secret key than the one used to verify it.",
+    "solution": "Ensure the same secret key is used for signing and verification. Check key rotation config."
+  },
+  {
+    "keyword": "connection timeout",
+    "rootCause": "Network or service timeout",
+    "explanation": "The application could not reach the target service within the configured timeout window.",
+    "solution": "Check network connectivity, firewall rules, and increase timeout if the service is slow."
+  },
+  {
+    "keyword": "outofmemoryerror",
+    "rootCause": "JVM heap exhaustion",
+    "explanation": "The application consumed all available heap memory. Usually caused by a memory leak or undersized JVM.",
+    "solution": "Increase -Xmx heap size. Profile with VisualVM or MAT to find memory leaks."
+  },
+  {
+    "keyword": "stackoverflowerror",
+    "rootCause": "Infinite recursion",
+    "explanation": "A method is calling itself recursively without a proper base case, exhausting the call stack.",
+    "solution": "Identify the recursive call chain and add a base case to terminate recursion."
+  },
+  {
+    "keyword": "403 forbidden",
+    "rootCause": "Authorization failure",
+    "explanation": "The authenticated user does not have permission to access the requested resource.",
+    "solution": "Check role assignments, RBAC policies, and resource-level access control configuration."
+  },
+  {
+    "keyword": "404 not found",
+    "rootCause": "Resource not found",
+    "explanation": "The requested endpoint or resource does not exist on the server.",
+    "solution": "Verify the URL path, check routing configuration, and ensure the resource has been created."
+  },
+  {
+    "keyword": "classnotfoundexception",
+    "rootCause": "Missing class or JAR dependency",
+    "explanation": "The JVM cannot find the specified class at runtime, usually due to a missing dependency.",
+    "solution": "Check pom.xml dependencies. Run mvn clean install to rebuild the classpath."
+  },
+  {
+    "keyword": "duplicate key",
+    "rootCause": "Database unique constraint violation",
+    "explanation": "An insert or update attempted to create a duplicate value in a column with a unique constraint.",
+    "solution": "Check for existing records before insert. Use upsert logic or handle the exception gracefully."
   }
 ]

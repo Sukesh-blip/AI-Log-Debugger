@@ -5,7 +5,6 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- ✅ Stable Spring Boot Version -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -13,65 +12,81 @@
         <relativePath/>
     </parent>
 
-    <!-- ✅ Project Info -->
-    <groupId>com.maveric</groupId>
+    <groupId>com.example</groupId>
     <artifactId>ai-log-debugger</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ai-log-debugger</name>
-    <description>AI Log Debugger - analyzes logs using AI</description>
+    <name>AI-Log-Debugger</name>
 
-    <!-- ✅ Java Version -->
     <properties>
         <java.version>17</java.version>
     </properties>
 
     <dependencies>
 
-        <!-- 🌐 Web (REST APIs) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- 🔄 DevTools (auto restart during dev) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- ⚡ Lombok (optional but useful) -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
 
-        <!-- 🧪 Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
-        <!-- 🚀 Redis Caching -->
+        <!-- Redis (Lettuce — supports SSL for Azure) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+        </dependency>
 
-        <!-- 📖 Swagger / OpenAPI Integration -->
+        <!-- Swagger -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>2.6.0</version>
         </dependency>
 
+        <!-- Azure OpenAI -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-ai-openai</artifactId>
+            <version>1.0.0-beta.12</version>
+        </dependency>
+
+        <!-- Azure AI Search -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-search-documents</artifactId>
+            <version>11.6.4</version>
+        </dependency>
+
+        <!-- Azure Identity -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.13.3</version>
+        </dependency>
+
     </dependencies>
 
     <build>
         <plugins>
-
-            <!-- ✅ Compiler plugin (for Lombok support) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -84,13 +99,10 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
-
-            <!-- ✅ Spring Boot plugin -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-
         </plugins>
     </build>
 

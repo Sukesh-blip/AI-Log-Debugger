@@ -17,7 +17,6 @@ public class CacheService {
     }
 
     public void set(String key, String value, long ttlSeconds) {
-        redisTemplate.opsForValue()
-                     .set(key, value, Duration.ofSeconds(ttlSeconds));
+        redisTemplate.opsForValue().set(key, value, Duration.ofSeconds(ttlSeconds));
     }
 }
