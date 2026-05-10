@@ -1,36 +1,30 @@
-# AI Log Debugger — Phase 3 (Azure AI Stack)
+# AI Log Debugger — Hybrid RAG Pipeline on Azure
 
-> A production-grade backend system that automatically analyzes application logs and returns root cause, explanation, suggested fix, and confidence score — powered entirely by Azure AI services.
+![Java](https://img.shields.io/badge/Java_17-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot_3.3-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white)
+![Azure](https://img.shields.io/badge/Azure_App_Service-0089D6?style=for-the-badge&logo=microsoft-azure&logoColor=white)
+![OpenAI](https://img.shields.io/badge/Azure_OpenAI_GPT--4o--mini-412991?style=for-the-badge&logo=openai&logoColor=white)
+![Redis](https://img.shields.io/badge/Azure_Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![Status](https://img.shields.io/badge/Live-✅_Deployed-brightgreen?style=for-the-badge)
+
+> **Production-grade AI backend** that automatically analyzes application logs and returns root cause, explanation, suggested fix, and confidence score — powered entirely by Azure AI services.
+>
+> Built with a **cost-optimized 9-step Hybrid RAG Pipeline**: Redis cache → Rule Engine → Vector Search → LLM. The LLM is called only when every other layer misses — minimizing token cost without sacrificing accuracy.
 
 ---
 
-## Live Demo
+## 🔴 Live Demo
 
-**API Endpoint:** `https://ai-log-debugger-app.azurewebsites.net/logs/analyze`
+| Resource | URL |
+|---|---|
+| **API Endpoint** | `https://ai-log-debugger-app.azurewebsites.net/logs/analyze` |
+| **Swagger UI** | `https://ai-log-debugger-app.azurewebsites.net/swagger-ui.html` |
 
-**Swagger UI:** `https://ai-log-debugger-app.azurewebsites.net/swagger-ui.html`
-
----
-
-## What It Does
-
-Debugging production logs is repetitive and time-consuming. This system automates it.
-
-Send any log — a single error line, a full stack trace, or raw console output — and the system returns:
-
-- **Root Cause** — what went wrong
-- **Explanation** — why it happened
-- **Suggested Fix** — how to resolve it
-- **Confidence Score** — how certain the system is (0.0 to 1.0)
-
-### Example
-
-**Request:**
-```json
-POST /logs/analyze
-{
-  "log": "ERROR: connection refused while connecting to database at localhost:5432"
-}
+**Try it now — no auth required:**
+```bash
+curl -X POST https://ai-log-debugger-app.azurewebsites.net/logs/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"log": "ERROR: connection refused while connecting to database at localhost:5432"}'
 ```
 
 **Response:**
@@ -45,108 +39,118 @@ POST /logs/analyze
 
 ---
 
+## Why This Project Is Different
+
+Most AI projects call the LLM directly for every request. This one doesn't.
+
+This system is engineered around **cost control and latency reduction** — the two things that matter most in production AI systems. The LLM is the last resort, not the first call.
+
+| What most AI projects do | What this project does |
+|---|---|
+| Call LLM for every request | Try cache → rules → vector search first |
+| No cost awareness | Each layer tracked and optimized |
+| Mock embeddings | Real Azure OpenAI ada-002 (1536 dims) |
+| Local dev only | Fully deployed on Azure App Service |
+| Single-layer retrieval | 9-step hybrid pipeline with fallbacks |
+
+---
+
 ## Architecture — 9-Step Hybrid RAG Pipeline
 
 ```
 Log Input
     ↓
-1. Input Validation + Sanitization
+1. Input Validation + Sanitization      ← reject malformed input early
     ↓
-2. Normalize (trim + lowercase)
+2. Normalize (trim + lowercase)         ← consistent cache keys
     ↓
-3. Redis Cache Check          → HIT: return instantly, zero AI cost
+3. Redis Cache Check    ──────── HIT → return instantly (zero AI cost)
+    ↓ MISS
+4. Rule Engine          ──────── HIT → keyword/semantic match (no LLM)
+    ↓ MISS
+5. Azure OpenAI Embeddings              ← ada-002, 1536-dim vector
     ↓
-4. Rule Engine                → HIT: keyword/semantic match, no LLM needed
+6. Azure AI Search (HNSW)              ← top-3 similar past logs
     ↓
-5. Azure OpenAI Embeddings    → convert log to 1536-dim vector (ada-002)
+7. Context Builder                     ← inject retrieved logs into prompt
     ↓
-6. Azure AI Search (HNSW)     → find top-3 similar past logs
+8. Azure OpenAI GPT-4o-mini ─── LAST RESORT: only when all layers miss
     ↓
-7. Context Builder            → join similar logs into prompt context
-    ↓
-8. Azure OpenAI GPT-4o-mini   → only called when all above layers miss
-    ↓
-9. Save to Vector Store + Cache → Return JSON
+9. Save to Vector Store + Redis Cache → Return JSON
 ```
 
-This is a **cost-optimized Hybrid RAG Pipeline**. The LLM is the last resort — most requests are resolved through cache, rules, or vector retrieval without ever calling the LLM.
+**Result:** Repeated and pattern-matched logs cost near zero. The system gets smarter with every LLM call (self-improving via vector storage).
+
+---
+
+## Azure Infrastructure
+
+All services are live and connected. Screenshots from the Azure portal:
+
+### Azure OpenAI — GPT-4o-mini + text-embedding-ada-002
+![Azure OpenAI](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-openai.png)
+
+### Model Deployments — Both Active
+![Model Deployments](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-deployments.png)
+
+### Azure AI Search — Vector Index (HNSW, 1536 dims)
+![Azure AI Search](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-search.png)
+
+### Azure Cache for Redis — Running (SSL, port 6380)
+![Azure Redis](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-redis.png)
+
+### Azure App Service — Status: Running
+![Azure App Service](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-appservice.png)
+
+---
+
+## API Responses — All Three Pipeline Paths
+
+### Path 1: Rule Engine Hit (confidence: 1.0, zero LLM cost)
+![Rule Engine Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-rule-engine.png)
+
+### Path 2: LLM Response — GPT-4o-mini (unknown error pattern)
+![LLM Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-llm.png)
+
+### Path 3: Stack Trace Input (multi-line supported)
+![Stack Trace Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-stacktrace.png)
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Framework | Spring Boot 3.3.2, Java 17 | Backend API |
+| LLM | Azure OpenAI GPT-4o-mini | Root cause generation |
+| Embeddings | Azure OpenAI text-embedding-ada-002 | 1536-dim vector conversion |
+| Vector Store | Azure AI Search (HNSW) | Semantic similarity retrieval |
+| Cache | Azure Cache for Redis (SSL, 6hr TTL) | Zero-cost repeated log resolution |
+| API Docs | Swagger UI (springdoc) | Live interactive documentation |
+| Deployment | Azure App Service (Linux, Java 17 SE) | Production hosting |
+| Build | Maven | Dependency management |
+
+---
+
+## Cost Optimization Strategy
+
+Every layer is designed to short-circuit before reaching the LLM:
+
+| Layer | Token Cost | Trigger Condition |
+|---|---|---|
+| Redis Cache | **Zero** | Same log seen before (SHA-256 key match) |
+| Rule Engine — keyword | **Zero** | Known error pattern match |
+| Rule Engine — semantic | Embedding only | Cosine similarity to known patterns |
+| Vector Search | Embedding only | Similar past logs exist in index |
+| LLM — GPT-4o-mini | Full cost | Unknown error, no matches found |
+
+In production, the vast majority of repeated logs are served from cache at **zero AI cost**.
 
 ---
 
 ## Swagger UI
 
 ![Swagger UI](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/swagger-ui.png)
-
----
-
-## API Responses
-
-### Rule Engine Response (confidence: 1.0 — instant, no LLM cost)
-
-![Rule Engine Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-rule-engine.png)
-
-### LLM Response — GPT-4o-mini (unknown error pattern)
-
-![LLM Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-llm.png)
-
-### Stack Trace Input (multi-line raw input supported)
-
-![Stack Trace Response](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/response-stacktrace.png)
-
----
-
-## Azure Infrastructure
-
-### Azure OpenAI — GPT-4o-mini + text-embedding-ada-002
-
-![Azure OpenAI](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-openai.png)
-
-### Model Deployments — Both Succeeded
-
-![Model Deployments](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-deployments.png)
-
-### Azure AI Search — Vector Store (HNSW, 1536 dims)
-
-![Azure AI Search](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-search.png)
-
-### Azure Cache for Redis — Running
-
-![Azure Redis](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-redis.png)
-
-### Azure App Service — Status: Running
-
-![Azure App Service](https://raw.githubusercontent.com/Sukesh-blip/AI-Log-Debugger/main/docs/screenshots/azure-appservice.png)
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Spring Boot 3.3.2, Java 17 |
-| LLM | Azure OpenAI GPT-4o-mini |
-| Embeddings | Azure OpenAI text-embedding-ada-002 (1536 dims) |
-| Vector Store | Azure AI Search (HNSW algorithm) |
-| Cache | Azure Cache for Redis (SSL, port 6380, 6hr TTL) |
-| API Docs | Swagger UI (springdoc) |
-| Deployment | Azure App Service (Linux, Java 17 SE) |
-| Build | Maven |
-
----
-
-## Cost Optimization Strategy
-
-The pipeline short-circuits as early as possible to minimize Azure OpenAI token usage:
-
-| Layer | Cost | When triggered |
-|---|---|---|
-| Redis Cache | Zero | Same log seen before |
-| Rule Engine (keyword) | Zero | Known error patterns |
-| Rule Engine (semantic) | Embedding only | Similar to known patterns |
-| Vector Search | Embedding only | Similar past logs exist |
-| LLM (GPT-4o-mini) | Full cost | Unknown error, no matches |
-
-In production, the vast majority of repeated logs are served from cache with zero AI cost.
 
 ---
 
@@ -161,7 +165,7 @@ src/main/java/com/example/demo/
 │   └── SearchIndexInitializer.java   # Auto-creates vector index on startup
 │
 ├── controller/
-│   └── LogController.java            # REST endpoints + Swagger
+│   └── LogController.java            # REST endpoints + Swagger docs
 │
 ├── service/
 │   ├── LogAnalysisService.java       # Orchestrates the 9-step pipeline
@@ -184,80 +188,59 @@ src/main/java/com/example/demo/
 │   └── VectorEntry.java              # Vector store entry
 │
 ├── exception/
-│   └── GlobalExceptionHandler.java   # Clean error responses
+│   └── GlobalExceptionHandler.java   # Structured error responses
 │
 └── util/
     └── HashUtil.java                 # SHA-256 cache key generator
 
 src/main/resources/
 ├── application.properties            # Azure config
-├── application-secrets.properties    # Keys (not committed)
-└── errors.json                       # 10 error pattern knowledge base
+├── application-secrets.properties    # Keys (gitignored)
+└── errors.json                       # 10-pattern knowledge base
 ```
 
 ---
 
 ## Running Locally
 
-**Prerequisites:** Java 17, Maven, Azure subscription
+**Prerequisites:** Java 17, Maven, Azure subscription (OpenAI + AI Search + Redis)
 
-**1. Clone the repository:**
 ```bash
+# 1. Clone
 git clone https://github.com/Sukesh-blip/AI-Log-Debugger.git
 cd AI-Log-Debugger
-```
 
-**2. Fill in your secrets:**
-
-Create `src/main/resources/application-secrets.properties`:
-```properties
+# 2. Add secrets (gitignored)
+# Create: src/main/resources/application-secrets.properties
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
 AZURE_OPENAI_KEY=your-key
-
 AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
 AZURE_SEARCH_KEY=your-admin-key
-
 AZURE_REDIS_HOST=your-cache.redis.cache.windows.net
 AZURE_REDIS_PASSWORD=your-redis-key
-```
 
-**3. Run:**
-```bash
+# 3. Run
 ./mvnw spring-boot:run
-```
+# On first run: vector index 'log-vectors' is created automatically
 
-On first startup you will see:
-```
-Index 'log-vectors' not found — creating...
-Index 'log-vectors' created successfully.
-```
+# 4. Test
+curl -X POST http://localhost:8080/logs/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"log": "java.lang.NullPointerException at com.example.Service.process(Service.java:42)"}'
 
-The Azure AI Search index is created automatically — no manual portal setup needed.
-
-**4. Test:**
-```bash
-POST http://localhost:8080/logs/analyze
-Content-Type: application/json
-
-{"log": "ERROR: connection refused while connecting to database at localhost:5432"}
-```
-
-**5. Swagger UI:**
-```
-http://localhost:8080/swagger-ui.html
+# 5. Swagger
+open http://localhost:8080/swagger-ui.html
 ```
 
 ---
 
-## Deploying to Azure App Service
+## Deploy to Azure App Service
 
-**Build:**
 ```bash
+# Build
 ./mvnw clean package -DskipTests
-```
 
-**Deploy:**
-```bash
+# Deploy
 az webapp deploy \
   --name your-app-name \
   --resource-group your-rg \
@@ -270,78 +253,76 @@ az webapp deploy \
 ## API Reference
 
 ### `POST /logs/analyze`
+Accepts a single line, full stack trace, or raw console output.
 
-Accepts any log input — single line, full stack trace, or raw console output.
-
-**Request:**
 ```json
-{
-  "log": "your error log here"
-}
-```
+// Request
+{ "log": "your error log here" }
 
-**Response:**
-```json
+// Response
 {
   "rootCause": "string",
   "explanation": "string",
   "suggestedFix": "string",
-  "confidence": 0.0
+  "confidence": 0.95
 }
 ```
 
 ### `GET /logs/test-ai`
-
-Quick test endpoint — runs analysis on a hardcoded DB connection error.
+Quick smoke test — runs analysis on a hardcoded DB connection error. Useful for verifying Azure connectivity after deployment.
 
 ---
 
 ## Knowledge Base
 
-The rule engine uses a built-in knowledge base of 10 common error patterns covering:
+The rule engine covers 10 common production error patterns without needing an LLM:
 
 - Database connection failures
-- NullPointerException
-- OutOfMemoryError
-- StackOverflowError
+- `NullPointerException`
+- `OutOfMemoryError`
+- `StackOverflowError`
 - JWT signature mismatch
-- 403 / 404 HTTP errors
-- ClassNotFoundException
+- HTTP 403 / 404 errors
+- `ClassNotFoundException`
 - Duplicate key violations
 - Connection timeouts
 - SQL syntax errors
 
-Any log not matching these patterns is handled by the LLM.
+Unknown patterns fall through to GPT-4o-mini. Every LLM response is saved to the vector store — the system gets smarter over time.
 
 ---
 
 ## What This Project Demonstrates
 
-- **Hybrid RAG Pipeline** — combining deterministic rules with probabilistic AI
-- **Cost-aware AI architecture** — LLM as last resort, not first call
-- **Azure AI integration** — OpenAI, AI Search, Redis, App Service
-- **Production patterns** — caching, fallbacks, input sanitization, structured output
-- **Self-improving system** — every LLM response is stored for future vector retrieval
+| Engineering Decision | Why It Matters |
+|---|---|
+| Hybrid RAG Pipeline | Combines deterministic rules with probabilistic AI — best of both worlds |
+| Cost-aware architecture | LLM is last resort, not default — production-ready thinking |
+| Self-improving system | Every LLM call enriches the vector store for future retrieval |
+| Redis caching with SHA-256 keys | Deterministic cache keys for identical log deduplication |
+| Azure AI Search with HNSW | Approximate nearest-neighbor search for fast vector retrieval at scale |
+| Auto-index creation on startup | Zero manual Azure portal setup — fully code-driven infrastructure |
+| SSL Redis on port 6380 | Production-grade secure cache configuration |
+| Structured JSON output with confidence score | Parseable, trustworthy responses for downstream consumers |
 
 ---
 
 ## Project Evolution
 
-| Phase | What was built |
-|---|---|
-| Phase 1 | Spring Boot API, JSON knowledge base, cosine similarity, mock embeddings |
-| Phase 2 | Full RAG pipeline, Redis cache, rule engine, similarity threshold, Groq LLM |
-| Phase 3 | Azure OpenAI (real embeddings + GPT-4o-mini), Azure AI Search (HNSW vector store), Azure Cache for Redis (SSL), Azure App Service deployment |
+| Phase | Stack | What Was Built |
+|---|---|---|
+| Phase 1 | Spring Boot, Java, JSON | Rule engine, cosine similarity, mock embeddings |
+| Phase 2 | + Groq LLM, Redis | Full RAG pipeline, rule engine, similarity threshold |
+| Phase 3 | + Azure OpenAI, Azure AI Search, Azure App Service | Real embeddings (ada-002), HNSW vector store, GPT-4o-mini, production deployment |
 
 ---
 
 ## Author
 
-**Sukesh Biradar**
-Backend | Cloud | AI
+**Sukesh Biradar** — Backend · Cloud · AI
 
-GitHub: [Sukesh-blip](https://github.com/Sukesh-blip)
+[![GitHub](https://img.shields.io/badge/GitHub-Sukesh--blip-181717?style=flat&logo=github)](https://github.com/Sukesh-blip)
 
 ---
 
-> This project is not just an AI feature implementation. It is a controlled AI system designed to balance accuracy, cost, and performance through structured engineering decisions.
+> This is not a tutorial project. It is a production-deployed, cost-optimized AI system built with real Azure infrastructure — engineered to minimize LLM cost while maximizing diagnostic accuracy through a layered retrieval strategy.
